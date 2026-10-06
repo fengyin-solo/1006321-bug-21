@@ -20,6 +20,19 @@ export type ModuleMeta = {
   metrics: string[]
 }
 
+/** 通风机组故障处置记录：上报故障开单，故障停机转回已停机即验收完工。 */
+export type FaultRecord = {
+  id: number
+  entryId: number
+  unitCode: string
+  foundDate: string
+  reason: string
+  operator: string
+  source: string
+  status: string
+  finishedDate: string
+}
+
 export type PageResult = {
   items: EntryRow[]
   total: number

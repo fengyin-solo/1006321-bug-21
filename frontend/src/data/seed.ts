@@ -165,7 +165,7 @@ export const SEED_ROWS: Record<string, EntryRow[]> = {
     },
     {
       "id": 3,
-      "status": "已停机",
+      "status": "故障停机",
       "pending": false,
       "abnormal": false,
       "机组编号": "VENT-0003",

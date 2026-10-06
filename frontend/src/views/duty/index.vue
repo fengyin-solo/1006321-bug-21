@@ -18,6 +18,16 @@
       </article>
     </div>
 
+    <section class="snapshot-panel">
+      <h3 class="snapshot-title">交接班快照 · 通风机组（与通风系统运维页同源）</h3>
+      <div class="stat-row">
+        <article v-for="item in ventSnapshot" :key="item.label" class="stat-card">
+          <span class="stat-label">{{ item.label }}</span>
+          <strong class="stat-value">{{ item.value }}</strong>
+        </article>
+      </div>
+    </section>
+
     <p class="status-legend">
       <span v-for="item in statusSummary" :key="item.status" class="legend-item">
         {{ item.status }}：{{ item.count }}
@@ -76,8 +86,10 @@ import { computed, onMounted, ref } from 'vue'
 import {
   downloadEntries,
   listEntries,
+  listFaults,
   moduleMeta,
   runAction as applyAction,
+  statusCounts,
 } from '@/api/local-service'
 import type { EntryRow } from '@/data/types'
 
@@ -92,6 +104,8 @@ const total = ref(0)
 const errorMessage = ref('')
 const filters = ref<Record<string, string>>({})
 const filterFields = columns.slice(0, 3)
+// 交接班读到的通风台数与故障完工清单，和通风系统运维页取同一份数据。
+const ventSnapshot = ref<{ label: string; value: number }[]>([])
 const statusSummary = computed(() =>
   statuses.map((status: string) => ({
     status,
@@ -128,10 +142,36 @@ function reload() {
     const payload = listEntries(meta.key, filters.value)
     rows.value = payload.items
     total.value = payload.total
+    loadVentSnapshot()
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '运维值班交接列表读取失败'
   }
 }
 
+function loadVentSnapshot() {
+  const counts = statusCounts('ventilation')
+  const faults = listFaults()
+  ventSnapshot.value = [
+    ...counts.map((item) => ({ label: `通风机组·${item.status}`, value: item.count })),
+    { label: '处置中故障', value: faults.filter((item) => item.status === '处置中').length },
+    { label: '已完工故障', value: faults.filter((item) => item.status === '已完工').length },
+  ]
+}
+
 onMounted(reload)
 </script>
+
+<style scoped>
+.snapshot-panel {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+.snapshot-title {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+</style>

@@ -1,9 +1,19 @@
+import { closeFault, listFaultRecords, reportFault } from '@/data/fault-log'
+import { resolveVentilationAction } from '@/data/lifecycle'
 import { MODULE_BY_KEY } from '@/data/modules'
 import { allRows, listRows, resetRows, saveRows } from '@/data/local-store'
-import type { ActionResult, EntryRow, ModuleMeta, OverviewResult, PageResult } from '@/data/types'
+import type { ActionResult, EntryRow, FaultRecord, ModuleMeta, OverviewResult, PageResult } from '@/data/types'
 
 // 会写进数据的「往回走」动作：命中就把这条记录标成异常态，看板上能一眼看出来。
 const NEGATIVE_ACTIONS = ['撤销', '作废', '拒绝', '驳回', '停用', '忽略', '下线', '回滚']
+
+const VENTILATION_KEY = 'ventilation'
+
+function formatNow(): string {
+  const now = new Date()
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`
+}
 
 export function moduleMeta(key: string): ModuleMeta {
   const meta = MODULE_BY_KEY.get(key)
@@ -39,6 +49,9 @@ export function runAction(key: string, id: number, action: string): ActionResult
   if (index < 0) {
     return { ok: false, message: `没有找到编号为 ${id} 的${meta.entity}` }
   }
+  if (key === VENTILATION_KEY) {
+    return runVentilationAction(key, rows, index, action)
+  }
   const current = String(rows[index].status)
   if (current === target) {
     return { ok: false, message: `${meta.entity}已经是「${target}」，不用重复操作` }
@@ -54,6 +67,71 @@ export function runAction(key: string, id: number, action: string): ActionResult
   next[index] = updated
   saveRows(key, next)
   return { ok: true, message: `${meta.entity}已${action}，当前状态「${target}」` }
+}
+
+/**
+ * 通风机组动作：先过生命周期状态机，跳段一律打回并写清卡在哪一段；
+ * 通过后状态、运行模式、停机原因、启停时间与故障记录在一次提交里落库，
+ * 列表、详情、交接班与概览读到的才是同一份。
+ */
+function runVentilationAction(key: string, rows: EntryRow[], index: number, action: string): ActionResult {
+  const row = rows[index]
+  const resolution = resolveVentilationAction(action, String(row.status))
+  if (resolution.kind === 'blocked') {
+    return { ok: false, message: resolution.message }
+  }
+  if (resolution.kind === 'noop') {
+    return { ok: true, message: resolution.message }
+  }
+  const { step } = resolution
+  const now = formatNow()
+  const updated: EntryRow = {
+    ...row,
+    status: step.to,
+    pending: step.pending,
+    abnormal: step.abnormal,
+    运行模式: step.mode,
+    停机原因: step.reason,
+    启停时间: now,
+  }
+  const next = [...rows]
+  next[index] = updated
+  saveRows(key, next)
+  // 故障记录与状态同一次提交落库：上报故障开单，故障停机转回已停机即验收完工。
+  // 同一机组重复上报只置一次故障（reportFault 内部幂等，状态机也把重复动作拦成 noop）。
+  if (action === '上报故障') {
+    reportFault({
+      entryId: Number(row.id),
+      unitCode: String(row['机组编号'] ?? ''),
+      foundDate: now,
+      reason: step.reason,
+      operator: String(row['操作人员'] ?? ''),
+      source: '页面操作',
+    })
+  }
+  if (step.from === '故障停机' && step.to === '已停机') {
+    closeFault(Number(row.id), now)
+  }
+  return { ok: true, message: `通风机组已${action}：${step.from} → ${step.to}，状态、运行模式与停机原因已一次落库` }
+}
+
+export function getEntry(key: string, id: number): EntryRow | null {
+  return listRows(key).find((row) => Number(row.id) === id) ?? null
+}
+
+/** 按模块状态顺序统计台数：通风页统计卡、交接班快照都从这里取，保证两边一致。 */
+export function statusCounts(key: string): { status: string; count: number }[] {
+  const meta = moduleMeta(key)
+  const rows = listRows(key)
+  return meta.statuses.map((status) => ({
+    status,
+    count: rows.filter((row) => String(row.status) === status).length,
+  }))
+}
+
+/** 故障处置/完工清单：通风页与交接班页读同一份。 */
+export function listFaults(entryId?: number): FaultRecord[] {
+  return listFaultRecords(entryId)
 }
 
 export function resetModule(key: string): PageResult {

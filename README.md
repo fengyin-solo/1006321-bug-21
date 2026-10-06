@@ -68,4 +68,8 @@ npm run build
 - 字段、状态、动作与流转目标集中在 `frontend/src/data/modules.ts`；示例数据在
   `frontend/src/data/seed.ts`。
 - 状态流转只允许在 `local-service.ts` 里改，页面组件不做业务判断。
+- 通风机组的生命周期是一条单向链路（运行中 / 已停机 / 故障停机），定义在
+  `frontend/src/data/lifecycle.ts`；故障处置记录单独持久化在
+  `frontend/src/data/fault-log.ts`。存量回填与两版判定取舍的裁决见
+  `docs/ventilation-lifecycle.md`。
 - 想回到初始数据：清掉浏览器里 `urban-utility-tunnel:entries` 这一项，或调用 `resetModule(模块)`。
