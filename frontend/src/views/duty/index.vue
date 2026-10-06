@@ -67,6 +67,34 @@
       <span>共 {{ total }} 条运维值班交接记录</span>
       <span v-if="errorMessage" class="error-text">{{ errorMessage }}</span>
     </footer>
+
+    <section class="fan-check">
+      <h3>交接核对 · 通风机组台数</h3>
+      <p class="fan-check-desc">
+        台数直接取自通风机组事件链的同一份推导结果，与通风列表、详情、概览一致；接班时逐项核对后再交接。
+      </p>
+      <div class="stat-row">
+        <article class="stat-card running">
+          <span class="stat-label">运行中风机</span>
+          <strong class="stat-value">{{ fanCounts.运行中 }}</strong>
+        </article>
+        <article class="stat-card stopped">
+          <span class="stat-label">已停机风机</span>
+          <strong class="stat-value">{{ fanCounts.已停机 }}</strong>
+        </article>
+        <article class="stat-card fault">
+          <span class="stat-label">故障停机风机</span>
+          <strong class="stat-value">{{ fanCounts.故障停机 }}</strong>
+        </article>
+        <article class="stat-card">
+          <span class="stat-label">待开机风机</span>
+          <strong class="stat-value">{{ fanCounts.待开机 }}</strong>
+        </article>
+      </div>
+      <p class="fan-check-foot">
+        合计 {{ fanCounts.total }} 台；另有 {{ fanCounts.pendingSync }} 条机组事件待上行同步，列入交接遗留。
+      </p>
+    </section>
   </section>
 </template>
 
@@ -75,6 +103,7 @@ import { computed, onMounted, ref } from 'vue'
 
 import {
   downloadEntries,
+  fanCounters,
   listEntries,
   moduleMeta,
   runAction as applyAction,
@@ -92,6 +121,8 @@ const total = ref(0)
 const errorMessage = ref('')
 const filters = ref<Record<string, string>>({})
 const filterFields = columns.slice(0, 3)
+// 交接班读到的风机台数：与通风列表、详情共用 fanCounters 这一份
+const fanCounts = ref(fanCounters())
 const statusSummary = computed(() =>
   statuses.map((status: string) => ({
     status,
@@ -128,6 +159,7 @@ function reload() {
     const payload = listEntries(meta.key, filters.value)
     rows.value = payload.items
     total.value = payload.total
+    fanCounts.value = fanCounters()
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '运维值班交接列表读取失败'
   }
@@ -135,3 +167,36 @@ function reload() {
 
 onMounted(reload)
 </script>
+
+<style scoped>
+.fan-check {
+  margin-top: 16px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+}
+.fan-check h3 {
+  margin: 0 0 4px;
+  font-size: 14px;
+}
+.fan-check-desc {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.fan-check-foot {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.stat-card.fault .stat-value {
+  color: #b42318;
+}
+.stat-card.running .stat-value {
+  color: #1a7f37;
+}
+.stat-card.stopped .stat-value {
+  color: var(--muted);
+}
+</style>
